@@ -1,0 +1,6 @@
+numpy==1.22.3
+opencv-python==4.5.5.64
+PyQt6==6.2.3
+PyQt6-Qt6==6.2.4
+PyQt6-sip==13.2.1
+SpeechRecognition==3.8.1
