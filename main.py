@@ -4,6 +4,8 @@ from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget
 
+# face recognition
+detector = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
 
 class MainWindow(QMainWindow):
 

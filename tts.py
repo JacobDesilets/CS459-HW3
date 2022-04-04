@@ -11,7 +11,7 @@ def textToSpeech(text):
 
 
 def speechToText():
-    r = sr.Recognizer
+    r = sr.Recognizer()
     while(1):
         try:
             with sr.Microphone() as source:
@@ -24,3 +24,4 @@ def speechToText():
             print(e)
         except sr.UnknownValueError:
             print("unknown error")
+
