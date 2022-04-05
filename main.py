@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
     def img_update_slot(self, img):
         self.feed_label.setPixmap(QPixmap.fromImage(img))
 
+    # activate after receiving position from the user
     def cancel_feed(self):
         self.webcam_thread.stop()
 
@@ -47,9 +48,9 @@ class WebcamWorker(QThread):
         capture = cv2.VideoCapture(0)
 
         while self.thread_active:
-            ret, frame = capture.read()
+            ret, self.frame = capture.read()
             if ret:
-                img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
                 flipped_img = cv2.flip(img, 1)
                 faces = detector.detectMultiScale(flipped_img, 1.3, 5)
                 for (x, y, w, h) in faces:
@@ -65,6 +66,9 @@ class WebcamWorker(QThread):
         #self.img_update.emit(QImage.load('nodata.png'))
         self.thread_active = False
         self.quit()
+
+        selfie = cv2.flip(self.frame, 1)
+        cv2.imwrite('selfie.png', selfie)
 
 
 app = QApplication(sys.argv)
