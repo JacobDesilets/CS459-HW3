@@ -51,12 +51,14 @@ class WebcamWorker(QThread):
             if ret:
                 img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 flipped_img = cv2.flip(img, 1)
+                faces = detector.detectMultiScale(flipped_img, 1.3, 5)
+                for (x, y, w, h) in faces:
+                    cv2.rectangle(flipped_img, (x, y), (x + w, y + h), (255, 0, 0), 2)
                 output = QImage(flipped_img.data, flipped_img.shape[1], flipped_img.shape[0], QImage.Format.Format_RGB888).scaled(640, 480, Qt.AspectRatioMode.KeepAspectRatio)
             else:
                 output = QImage.load('nodata.png')
 
             self.img_update.emit(output)
-
         capture.release()
 
     def stop(self):
