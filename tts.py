@@ -1,13 +1,15 @@
 import sys
 from gtts import gTTS
-import playsound
+import playsound, os
 import speech_recognition as sr
+
 
 def textToSpeech(text):
     tts = gTTS(text=text, lang='en')
     filename = "speech.mp3"
     tts.save(filename)
     playsound.playsound(filename)
+    os.remove(filename)
 
 
 def speechToText():
@@ -24,4 +26,7 @@ def speechToText():
             print(e)
         except sr.UnknownValueError:
             print("unknown error")
+
+
+textToSpeech("Hello world!")
 
