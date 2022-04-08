@@ -14,6 +14,11 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
 
         self.face_rect = None
+        self.nw_quad = QRect(0, 0, 320, 240)
+        self.ne_quad = QRect(321, 0, 319, 240)
+        self.sw_quad = QRect(0, 241, 320, 239)
+        self.se_quad = QRect(321, 241, 319, 239)
+        self.quads = [self.nw_quad, self.ne_quad, self.sw_quad, self.se_quad]
 
         self.layout = QVBoxLayout()
 
@@ -22,7 +27,6 @@ class MainWindow(QMainWindow):
         self.feed_label = QLabel()
         self.feed_label.setPixmap(QPixmap('nodata.png'))
         self.layout.addWidget(self.feed_label)
-        self.painter = QtGui.QPainter(self.feed_label.pixmap())
 
         self.cancel_btn = QPushButton("Take photo")
         self.cancel_btn.clicked.connect(self.cancel_feed)
@@ -37,15 +41,15 @@ class MainWindow(QMainWindow):
         widget.setLayout(self.layout)
         self.setCentralWidget(widget)
 
-    def draw_face_rect(self):
-
-
     def img_update_slot(self, img):
         self.feed_label.setPixmap(QPixmap.fromImage(img))
 
     def face_update_slot(self, rect):
         self.face_rect = rect
-        self.draw_face_rect()
+        for i, quad in enumerate(self.quads):
+            center = self.face_rect.center()
+            if quad.contains(center):
+                print(i)
 
     # activate after receiving position from the user
     def cancel_feed(self):
@@ -67,7 +71,7 @@ class WebcamWorker(QThread):
                 flipped_img = cv2.flip(img, 1)
                 faces = detector.detectMultiScale(flipped_img, 1.3, 5)
                 for (x, y, w, h) in faces:
-                    #cv2.rectangle(flipped_img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+                    cv2.rectangle(flipped_img, (x, y), (x + w, y + h), (255, 0, 0), 2)
                     self.face_update.emit(QRect(x, y, w, h))
                 output = QImage(flipped_img.data, flipped_img.shape[1], flipped_img.shape[0], QImage.Format.Format_RGB888).scaled(640, 480, Qt.AspectRatioMode.KeepAspectRatio)
             else:
