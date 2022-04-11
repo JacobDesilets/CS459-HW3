@@ -1,6 +1,6 @@
 import sys, cv2, os
 from pathlib import Path
-from PyQt6.QtCore import QThread, pyqtSignal, Qt, QRect
+from PyQt6.QtCore import QThread, pyqtSignal, Qt, QRect, QMutex
 from PyQt6.QtGui import QImage, QPixmap, QPainter
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QHBoxLayout
 from io import BytesIO
@@ -11,6 +11,9 @@ import speech_recognition as sr
 # face recognition
 detector = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
 
+# GLOBALS
+audio_queue = []
+mutex = QMutex()
 
 class MainWindow(QMainWindow):
 
@@ -24,6 +27,7 @@ class MainWindow(QMainWindow):
         self.se_quad = QRect(321, 241, 319, 239)
         self.quads = [self.nw_quad, self.ne_quad, self.sw_quad, self.se_quad]
         self.face_position = None
+
 
         self.layout = QVBoxLayout()
         self.layout_h = QHBoxLayout()
@@ -47,7 +51,8 @@ class MainWindow(QMainWindow):
         self.webcam_thread.img_update.connect(self.img_update_slot)
         self.webcam_thread.face_update.connect(self.face_update_slot)
 
-        self.tts_thread = TtsWorker('')
+        self.tts_thread = TtsWorker()
+        self.tts_thread.start()
 
         self.layout.addLayout(self.layout_h)
         widget = QWidget()
@@ -55,9 +60,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(widget)
 
     def play_tts(self, text):
-        if not self.tts_thread.isRunning():
-            self.tts_thread = TtsWorker(text)
-            self.tts_thread.start()
+        mutex.lock()
+        audio_queue.append(text)
+        mutex.unlock()
 
     def img_update_slot(self, img):
         self.feed_label.setPixmap(QPixmap.fromImage(img))
@@ -66,6 +71,8 @@ class MainWindow(QMainWindow):
         if not rect:  # If face not detected
             self.status_label.setText('No face detected')
             return
+
+        new_face_position = ''
 
         self.face_rect = rect
         for i, quad in enumerate(self.quads):
@@ -130,15 +137,29 @@ class WebcamWorker(QThread):
 
 
 class TtsWorker(QThread):
-    def __init__(self, text):
+
+    def __init__(self):
         super().__init__()
-        self.text = text
+        print('TTS thread init')
+        self.thread_active = True
 
     def run(self):
-        tts = gTTS(text=self.text, lang='en')
-        filename = 'speech.mp3'
-        tts.save(filename)
-        playsound.playsound(Path(__file__).with_name(filename))
+        while self.thread_active:
+            mutex.lock()
+            if audio_queue:
+                speech = audio_queue[0]
+                audio_queue.pop(0)
+                mutex.unlock()
+                tts = gTTS(text=speech, lang='en')
+                filename = 'speech.mp3'
+                tts.save(filename)
+                playsound.playsound(Path(__file__).with_name(filename))
+            else:
+                mutex.unlock()
+
+    def stop(self):
+        self.thread_active = False
+        self.quit()
 
 
 app = QApplication(sys.argv)
