@@ -1,6 +1,7 @@
 import sys, cv2, os
+import time
 from pathlib import Path
-from PyQt6.QtCore import QThread, pyqtSignal, Qt, QRect, QMutex
+from PyQt6.QtCore import QThread, pyqtSignal, Qt, QRect, QMutex, QRunnable
 from PyQt6.QtGui import QImage, QPixmap, QPainter
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QHBoxLayout
 from io import BytesIO
@@ -12,8 +13,9 @@ import speech_recognition as sr
 detector = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
 
 # GLOBALS
-audio_queue = []
-mutex = QMutex()
+tts_queue = []
+tts_queue_lock = QMutex()
+
 
 class MainWindow(QMainWindow):
 
@@ -26,8 +28,12 @@ class MainWindow(QMainWindow):
         self.sw_quad = QRect(0, 241, 320, 239)
         self.se_quad = QRect(321, 241, 319, 239)
         self.quads = [self.nw_quad, self.ne_quad, self.sw_quad, self.se_quad]
+        self.face_positions = ['Top Left', 'Top Right', 'Bottom Left', 'Bottom Right']
         self.face_position = None
+        self.face_target = 'Bottom Right'
+        self.target_reached = False
 
+        # self.setStyleSheet('MainWindow {background-color : #4db3a0;}')
 
         self.layout = QVBoxLayout()
         self.layout_h = QHBoxLayout()
@@ -39,20 +45,26 @@ class MainWindow(QMainWindow):
         self.layout.addWidget(self.feed_label)
 
         self.status_label = QLabel()
-        self.status_label.setText("Status")
+        self.status_label.setText('Position')
         self.layout_h.addWidget(self.status_label)
 
+        self.target_label = QLabel()
+        self.target_label.setText(f'Target: {self.face_target}')
+        # self.target_label.setStyleSheet('QLabel {background-color : black; color : white;}')
+        self.layout_h.addWidget(self.target_label)
+
         self.cancel_btn = QPushButton("Take photo")
-        self.cancel_btn.clicked.connect(self.cancel_feed)
+        self.cancel_btn.clicked.connect(self.take_photo)
         self.layout_h.addWidget(self.cancel_btn)
 
         self.webcam_thread = WebcamWorker()
         self.webcam_thread.start()
-        self.webcam_thread.img_update.connect(self.img_update_slot)
-        self.webcam_thread.face_update.connect(self.face_update_slot)
+        self.webcam_thread.img_update_signal.connect(self.img_update_slot)
+        self.webcam_thread.face_update_signal.connect(self.face_update_slot)
 
         self.tts_thread = TtsWorker()
         self.tts_thread.start()
+        self.tts_thread.done_speaking_signal.connect(self.take_photo_slot)
 
         self.layout.addLayout(self.layout_h)
         widget = QWidget()
@@ -60,12 +72,37 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(widget)
 
     def play_tts(self, text):
-        mutex.lock()
-        audio_queue.append(text)
-        mutex.unlock()
+        tts_queue_lock.lock()
+        tts_queue.append(text)
+        tts_queue_lock.unlock()
 
     def img_update_slot(self, img):
         self.feed_label.setPixmap(QPixmap.fromImage(img))
+
+    def guide_to_target(self):
+        pos = self.face_positions.index(self.face_position)
+        target = self.face_positions.index(self.face_target)
+        '''
+        0   1
+        2   3
+        '''
+        if pos == target:
+            self.target_reached = True
+            self.take_photo()
+        elif (pos < 2 and target < 2) or (pos > 1 and target > 1):  # If pos and target are on the same row
+            if pos < target:
+                self.play_tts('Move right')
+            else:
+                self.play_tts('Move left')
+        else:
+            if target - pos == 2:
+                self.play_tts('Move down')
+            elif target - pos == -2:
+                self.play_tts('Move up')
+            elif (target - pos == 1) or (target - pos == -3):
+                self.play_tts('Move left')
+            elif (target - pos == -1) or (target - pos == 3):
+                self.play_tts('Move right')
 
     def face_update_slot(self, rect):
         if not rect:  # If face not detected
@@ -92,18 +129,23 @@ class MainWindow(QMainWindow):
                         self.status_label.setText('Bottom Right')
                         new_face_position = 'Bottom Right'
                 if new_face_position != self.face_position:
-                    print('New face pos!')
-                    self.play_tts(new_face_position)
+                    # print('New face pos!')
                     self.face_position = new_face_position
+                    self.guide_to_target()
 
     # activate after receiving position from the user
-    def cancel_feed(self):
-        self.webcam_thread.stop()
+    def take_photo(self):
+        self.play_tts('Taking Selfie')
+        self.webcam_thread.capture()
+
+    def take_photo_slot(self, text):
+        if text == 'Taking Selfie':
+            self.webcam_thread.capture()
 
 
 class WebcamWorker(QThread):
-    img_update = pyqtSignal(QImage)
-    face_update = pyqtSignal(object)
+    img_update_signal = pyqtSignal(QImage)
+    face_update_signal = pyqtSignal(object)
 
     def run(self):
         self.thread_active = True
@@ -116,27 +158,25 @@ class WebcamWorker(QThread):
                 flipped_img = cv2.flip(img, 1)
                 faces = detector.detectMultiScale(flipped_img, 1.3, 5)
                 if len(faces) == 0:  # If face not detected
-                    self.face_update.emit(None)
+                    self.face_update_signal.emit(None)
                 for (x, y, w, h) in faces:
                     cv2.rectangle(flipped_img, (x, y), (x + w, y + h), (255, 0, 0), 2)
-                    self.face_update.emit(QRect(x, y, w, h))
+                    self.face_update_signal.emit(QRect(x, y, w, h))
                 output = QImage(flipped_img.data, flipped_img.shape[1], flipped_img.shape[0], QImage.Format.Format_RGB888).scaled(640, 480, Qt.AspectRatioMode.KeepAspectRatio)
             else:
                 output = QImage.load('nodata.png')
 
-            self.img_update.emit(output)
+            self.img_update_signal.emit(output)
         capture.release()
 
-    def stop(self):
-        #self.img_update.emit(QImage.load('nodata.png'))
-        #self.thread_active = False
-        #self.quit()
-
+    def capture(self):
         selfie = cv2.flip(self.frame, 1)
         cv2.imwrite('selfie.png', selfie)
 
 
 class TtsWorker(QThread):
+
+    done_speaking_signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -145,17 +185,18 @@ class TtsWorker(QThread):
 
     def run(self):
         while self.thread_active:
-            mutex.lock()
-            if audio_queue:
-                speech = audio_queue[0]
-                audio_queue.pop(0)
-                mutex.unlock()
+            tts_queue_lock.lock()
+            if tts_queue:
+                speech = tts_queue[0]
+                tts_queue.pop(0)
+                tts_queue_lock.unlock()
                 tts = gTTS(text=speech, lang='en')
                 filename = 'speech.mp3'
                 tts.save(filename)
                 playsound.playsound(Path(__file__).with_name(filename))
+                self.done_speaking_signal.emit(speech)
             else:
-                mutex.unlock()
+                tts_queue_lock.unlock()
 
     def stop(self):
         self.thread_active = False
