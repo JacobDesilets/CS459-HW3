@@ -1,10 +1,8 @@
 import sys, cv2, os
-import time
 from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal, Qt, QRect, QMutex, QRunnable
 from PyQt6.QtGui import QImage, QPixmap, QPainter
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QHBoxLayout
-from io import BytesIO
 from gtts import gTTS
 import playsound
 import speech_recognition as sr
@@ -115,19 +113,19 @@ class MainWindow(QMainWindow):
         for i, quad in enumerate(self.quads):
             center = self.face_rect.center()
             if quad.contains(center):
-                match i:
-                    case 0:
-                        self.status_label.setText('Top Left')
-                        new_face_position = 'Top Left'
-                    case 1:
-                        self.status_label.setText('Top Right')
-                        new_face_position = 'Top Right'
-                    case 2:
-                        self.status_label.setText('Bottom Left')
-                        new_face_position = 'Bottom Left'
-                    case 3:
-                        self.status_label.setText('Bottom Right')
-                        new_face_position = 'Bottom Right'
+                if i == 0:
+                    self.status_label.setText('Top Left')
+                    new_face_position = 'Top Left'
+                elif i == 1:
+                    self.status_label.setText('Top Right')
+                    new_face_position = 'Top Right'
+                elif i == 2:
+                    self.status_label.setText('Bottom Left')
+                    new_face_position = 'Bottom Left'
+                elif i == 3:
+                    self.status_label.setText('Bottom Right')
+                    new_face_position = 'Bottom Right'
+
                 if new_face_position != self.face_position:
                     # print('New face pos!')
                     self.face_position = new_face_position
@@ -193,7 +191,11 @@ class TtsWorker(QThread):
                 tts = gTTS(text=speech, lang='en')
                 filename = 'speech.mp3'
                 tts.save(filename)
-                playsound.playsound(Path(__file__).with_name(filename))
+                f = Path(__file__).with_name(filename)
+                path = 'D:\\Projects\CS459\CS459-HW3\speech.mp3'
+                # print(f)
+                # print(path)
+                playsound.playsound(path)
                 self.done_speaking_signal.emit(speech)
             else:
                 tts_queue_lock.unlock()
@@ -201,6 +203,30 @@ class TtsWorker(QThread):
     def stop(self):
         self.thread_active = False
         self.quit()
+
+
+class SttWorker(QThread):
+
+    speech_signal = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.thread_active = True
+
+    def run(self):
+        r = sr.Recognizer()
+        while self.thread_active:
+            try:
+                with sr.Microphone() as source:
+                    r.adjust_for_ambient_noise(source, duration=0.2)
+                    audio = r.listen(source)
+                    text = r.recognize_google(audio)
+                    text = text.lower()
+                    self.speech_signal.emit(text)
+            except sr.RequestError as e:
+                print(e)
+            except sr.UnknownValueError:
+                print("unknown error")
 
 
 app = QApplication(sys.argv)
