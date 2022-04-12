@@ -26,9 +26,9 @@ class MainWindow(QMainWindow):
         self.sw_quad = QRect(0, 241, 320, 239)
         self.se_quad = QRect(321, 241, 319, 239)
         self.quads = [self.nw_quad, self.ne_quad, self.sw_quad, self.se_quad]
-        self.face_positions = ['Top Left', 'Top Right', 'Bottom Left', 'Bottom Right']
+        self.face_positions = ['top left', 'top right', 'bottom left', 'bottom right']
         self.face_position = None
-        self.face_target = 'Bottom Right'
+        self.face_target = 'bottom right'
         self.target_reached = False
 
         # self.setStyleSheet('MainWindow {background-color : #4db3a0;}')
@@ -64,10 +64,21 @@ class MainWindow(QMainWindow):
         self.tts_thread.start()
         self.tts_thread.done_speaking_signal.connect(self.take_photo_slot)
 
+        self.sst_thread = SttWorker()
+        self.sst_thread.start()
+        self.sst_thread.speech_signal.connect(self.speech_slot)
+
         self.layout.addLayout(self.layout_h)
         widget = QWidget()
         widget.setLayout(self.layout)
         self.setCentralWidget(widget)
+
+    def speech_slot(self, text):
+        if text.lower() in self.face_positions:
+            self.face_target = text.lower()
+            self.play_tts(f'Target set to {text}')
+            self.target_label.setText(text)
+            self.guide_to_target()
 
     def play_tts(self, text):
         tts_queue_lock.lock()
@@ -114,17 +125,17 @@ class MainWindow(QMainWindow):
             center = self.face_rect.center()
             if quad.contains(center):
                 if i == 0:
-                    self.status_label.setText('Top Left')
-                    new_face_position = 'Top Left'
+                    self.status_label.setText('top left')
+                    new_face_position = 'top left'
                 elif i == 1:
-                    self.status_label.setText('Top Right')
-                    new_face_position = 'Top Right'
+                    self.status_label.setText('top right')
+                    new_face_position = 'top right'
                 elif i == 2:
-                    self.status_label.setText('Bottom Left')
-                    new_face_position = 'Bottom Left'
+                    self.status_label.setText('bottom left')
+                    new_face_position = 'bottom left'
                 elif i == 3:
-                    self.status_label.setText('Bottom Right')
-                    new_face_position = 'Bottom Right'
+                    self.status_label.setText('bottom right')
+                    new_face_position = 'bottom right'
 
                 if new_face_position != self.face_position:
                     # print('New face pos!')
@@ -193,9 +204,10 @@ class TtsWorker(QThread):
                 tts.save(filename)
                 f = Path(__file__).with_name(filename)
                 path = 'D:\\Projects\CS459\CS459-HW3\speech.mp3'
-                # print(f)
-                # print(path)
-                playsound.playsound(path)
+                try:
+                    playsound.playsound(f)
+                except Exception as e:
+                    print(e)
                 self.done_speaking_signal.emit(speech)
             else:
                 tts_queue_lock.unlock()
@@ -212,21 +224,23 @@ class SttWorker(QThread):
     def __init__(self):
         super().__init__()
         self.thread_active = True
+        print('SST thread init')
 
     def run(self):
+        pass
         r = sr.Recognizer()
         while self.thread_active:
             try:
                 with sr.Microphone() as source:
+                    pass
                     r.adjust_for_ambient_noise(source, duration=0.2)
                     audio = r.listen(source)
                     text = r.recognize_google(audio)
                     text = text.lower()
                     self.speech_signal.emit(text)
-            except sr.RequestError as e:
+                    print(text)
+            except Exception as e:
                 print(e)
-            except sr.UnknownValueError:
-                print("unknown error")
 
 
 app = QApplication(sys.argv)
