@@ -1,4 +1,5 @@
 import sys, cv2, os
+from datetime import datetime, timedelta
 from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal, Qt, QRect, QMutex, QRunnable
 from PyQt6.QtGui import QImage, QPixmap, QPainter
@@ -28,8 +29,10 @@ class MainWindow(QMainWindow):
         self.quads = [self.nw_quad, self.ne_quad, self.sw_quad, self.se_quad]
         self.face_positions = ['top left', 'top right', 'bottom left', 'bottom right']
         self.face_position = None
-        self.face_target = 'bottom right'
+        self.face_target = 'top right'
         self.target_reached = False
+        self.time_since_last_seen_face = datetime.now()
+        self.try_moving_left = False
 
         # self.setStyleSheet('MainWindow {background-color : #4db3a0;}')
 
@@ -89,6 +92,9 @@ class MainWindow(QMainWindow):
         self.feed_label.setPixmap(QPixmap.fromImage(img))
 
     def guide_to_target(self):
+        if self.face_position == 'no face detected':
+            return
+
         pos = self.face_positions.index(self.face_position)
         target = self.face_positions.index(self.face_target)
         '''
@@ -113,12 +119,29 @@ class MainWindow(QMainWindow):
             elif (target - pos == -1) or (target - pos == 3):
                 self.play_tts('Move right')
 
+    def guide_to_screen(self, delta):
+        if delta > timedelta(seconds=5) and delta < timedelta(seconds=10) and not self.try_moving_left:
+            self.play_tts('Try moving left')
+            self.try_moving_left = True
+            return
+        elif delta >= timedelta(seconds=10) and self.try_moving_left:
+            self.play_tts('Try moving right')
+            self.try_moving_left = False
+            self.time_since_last_seen_face = datetime.now()
+            return
+
+
     def face_update_slot(self, rect):
         if not rect:  # If face not detected
             self.status_label.setText('No face detected')
+            delta = datetime.now() - self.time_since_last_seen_face
+            self.guide_to_screen(delta)
+            self.face_position = 'no face detected'
             return
 
         new_face_position = ''
+        self.time_since_last_seen_face = datetime.now()
+        self.try_moving_left = False
 
         self.face_rect = rect
         for i, quad in enumerate(self.quads):
